@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import math
+import re
 import time
 import warnings
 from collections import deque
@@ -583,26 +584,79 @@ class LM:
         output_tokens: tuple[str, str] = ("True", "False"),
     ) -> LogprobsForFilterCascade:
         positive_token, negative_token = output_tokens
+
+        # Normalize positive and negative tokens
+        positive_token = positive_token.strip().lower()
+        negative_token = negative_token.strip().lower()
+
         base_cascade = self.format_logprobs_for_cascade(logprobs)
         all_positive_probs = []
 
-        def get_normalized_positive_prob(token_probs: dict[str, float]) -> float | None:
-            if positive_token in token_probs and negative_token in token_probs:
-                pos_prob = token_probs[positive_token]
-                neg_prob = token_probs[negative_token]
-                return pos_prob / (pos_prob + neg_prob)
-            return None
+        def normalize_token(token: str) -> str:
+            return token.strip().lower()
 
-        for resp_idx, response_logprobs in enumerate(logprobs):
+        def get_normalized_positive_prob(token_probs: dict[str, float]) -> float | None:
+            positive_mass = 0.0
+            negative_mass = 0.0
+
+            for token, prob in token_probs.items():
+                normalized_token = normalize_token(token)
+                if normalized_token == positive_token:
+                    positive_mass += prob
+                elif normalized_token == negative_token:
+                    negative_mass += prob
+
+            if positive_mass > 0 and negative_mass > 0:
+                return positive_mass / (positive_mass + negative_mass)
+
+            return None  # Return None if either positive or negative mass is zero
+
+        def get_fallback_positive_prob(response_logprobs: list[ChatCompletionTokenLogprob]) -> float:
+            generated_text = "".join(logprob.token for logprob in response_logprobs).strip().lower()
+
+            if generated_text == positive_token:
+                return 1.0
+            elif generated_text == negative_token:
+                return 0.0
+
+            escaped_positive = re.escape(positive_token)
+            escaped_negative = re.escape(negative_token)
+
+            answer_pattern = re.compile(rf"answer\s*:\s*({escaped_positive}|{escaped_negative})", re.IGNORECASE)
+
+            matches = list(answer_pattern.finditer(generated_text))
+
+            if matches:
+                answer = normalize_token(matches[-1].group(1))
+
+                if answer == positive_token:
+                    return 1.0
+                elif answer == negative_token:
+                    return 0.0
+
+            # If no matches found, return 0.5 as a fallback
+            return 0.5
+            
+        for response_logprobs in logprobs:
             pos_prob = None
-            for logprob in response_logprobs:
-                token_probs = {top.token: np.exp(top.logprob) for top in logprob.top_logprobs}
+            for token_logprob in reversed(response_logprobs):
+                generated_token = normalize_token(token_logprob.token)
+
+                if generated_token not in (positive_token, negative_token):
+                    continue
+
+                token_probs = {
+                    top.token: np.exp(top.logprob) 
+                    for top in token_logprob.top_logprobs
+                }
+
                 pos_prob = get_normalized_positive_prob(token_probs)
+
                 if pos_prob is not None:
                     break
 
             if pos_prob is None:
-                pos_prob = 1 if positive_token in base_cascade.tokens[resp_idx] else 0
+                pos_prob = get_fallback_positive_prob(response_logprobs)
 
             all_positive_probs.append(pos_prob)
 
