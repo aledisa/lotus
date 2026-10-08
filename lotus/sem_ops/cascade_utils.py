@@ -17,7 +17,10 @@ def importance_sampling(
     is_weight = cascade_args.cascade_IS_weight
     w = is_weight * w / np.sum(w) + (1 - is_weight) * np.ones((len(proxy_scores))) / len(proxy_scores)
 
-    sample_range = min(cascade_args.cascade_IS_max_sample_range, len(proxy_scores))
+    if cascade_args.cascade_IS_max_sample_range is None or cascade_args.cascade_IS_max_sample_range <= 0:
+        sample_range = len(proxy_scores)
+    else:
+        sample_range = min(cascade_args.cascade_IS_max_sample_range, len(proxy_scores))
     sample_w = w[:sample_range]
     sample_w = sample_w / np.sum(sample_w)
     indices = np.arange(sample_range)

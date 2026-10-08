@@ -180,7 +180,7 @@ class CascadeArgs(BaseModel):
 
     # Join cascade args
     min_join_cascade_size: int = 100
-    cascade_IS_max_sample_range: int = 200
+    cascade_IS_max_sample_range: int | None = None
     cascade_IS_random_seed: int | None = None
     join_cascade_strategy: Literal["search_filter", "map_search_filter"] | None = None
     join_cascade_pos_threshold: float | None = None
