@@ -11,7 +11,7 @@ def parse_cols(text: str) -> list[str]:
         raise ValueError(
             "Language expression contains no parameterized columns. Please specify the name of the relevant data column(s) in brackets {} within your language expression."
         )
-    return list(set(matches))
+    return list(dict.fromkeys(matches))
 
 
 def nle2str(nle: str, cols: list[str]) -> str:
